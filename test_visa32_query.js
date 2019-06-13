@@ -1,5 +1,12 @@
 var visa = require('./visa32.js');
 
+
+visa.query("GPIB0::18::INSTR", "*IDN?", function(err, result){
+  console.log({err, result})
+})
+
+/*
+
 var address = process.argv[2]; // 192.168.123.123
 var query   = process.argv[3]; // *IDN?
 if (!address) {
@@ -15,7 +22,7 @@ visa.query(scpiAddress, query, function(err, result){
   console.log(result);
 });
 
-/*
+
 // do query in single method calls (..., open, write, read, close,...)
 var resourceManager = 0;
 var sessionDevice   = 0;

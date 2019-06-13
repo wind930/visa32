@@ -9,7 +9,7 @@
  
 // modules
 var ref             = require('ref');
-var ffi             = require('ffi');
+var ffi             = require('ffi-napi');
 var ArrayType       = require('ref-array');
 var assert          = require('assert');
 // typedef
@@ -18,8 +18,12 @@ var ViSession       = ref.types.int;
 var intPtr          = ref.refType('int');
 var CharArray       = ArrayType('char');
 var refCharArray    = ref.refType(CharArray);
+var ViFindList      = ref.refType(ref.types.long);
+
 // library
-var visa32          = ffi.DynamicLibrary(__dirname + '\\lib\\visa64.dll');
+
+var visadll         = [__dirname, "\\lib\\visa", process.arch.replace("x",""),".dll"].join("");
+var visa32          = ffi.DynamicLibrary(visadll);
 var resourceManager = 0;
 var sessionDevice   = 0;
 var viStatus        = 0;
@@ -31,7 +35,8 @@ module.exports = {
   write:          function(visaSession, queryString, callback){ return visaWrite(visaSession, queryString, callback); },
   read:           function(visaSession, callback){              return visaRead(visaSession, callback);               },
   query:          function(visaAddress, queryString, callback){ return visaQuery(visaAddress, queryString, callback); },
-  exec:           function(visaSession, queryString, callback){ return visaExec(visaSession, queryString, callback);  }
+  exec:           function(visaSession, queryString, callback){ return visaExec(visaSession, queryString, callback);  },
+  visaFindRsrc:   function(callback){ return visaFindRsrc(callback); },
 }
 
 // implementation
@@ -49,6 +54,38 @@ function visaOpenDefaultRM(callback){
   // return session
   callback(null, resourceManager);
 }
+
+
+
+// implementation
+function visaFindRsrc(callback){
+  assert.equal(typeof (callback), 'function');
+  // exported methods
+  var viFindRsrcPointer = visa32.get('viFindRsrc');
+  var viOpenDefaultRMPointer  = visa32.get('viOpenDefaultRM');
+
+  // method definition
+  var viFindRsrc = ffi.VariadicForeignFunction(viFindRsrcPointer, ViStatus, [ViSession, 'string', ViFindList, 'int', 'string']);
+  var viOpenDefaultRM = ffi.VariadicForeignFunction(viOpenDefaultRMPointer, ViStatus, [intPtr]);
+
+
+  // open session to device
+  var findList = ref.alloc('long');
+  var counts   = ref.alloc('int')
+  var desc     = ref.alloc('char')
+  var outNumberMaster = ref.alloc('int');
+  viStatus = viOpenDefaultRM()(outNumberMaster);
+  var visaSession = outNumberMaster.deref();
+
+  viStatus = viFindRsrc()(visaSession,'0', findList, counts, desc);
+  console.log("visaFindRsrc", findList, counts, desc)
+  var _counts = desc.deref();
+  if (viStatus) return callback(viStatus);
+  // return session
+  callback(null, _counts);
+}
+
+
 
 function visaOpen(visaSession, visaAddress, callback){
   //assert.equal(typeof (visaSession), 'int',    'argument "visaSession" must be a int');
@@ -94,7 +131,7 @@ function visaRead(visaSession, callback){
   var viRead = ffi.VariadicForeignFunction(viReadPointer, ViStatus, [ViSession, refCharArray, 'int', intPtr]);
   // read back query result
   var outNumberReadBuffLen = ref.alloc('int');  
-  var outReadBuffer = new Buffer(512);
+  var outReadBuffer = Buffer.alloc(512);
   outReadBuffer.type = ref.types.char;
   viStatus = viRead()(visaSession, outReadBuffer, outReadBuffer.length, outNumberReadBuffLen);
   var readBuffLen = outNumberReadBuffLen.deref();
@@ -151,7 +188,7 @@ function visaQuery(visaAddress, queryString, callback){
   if (viStatus) return callback(viStatus);
   // read back query result
   var outNumberReadBuffLen = ref.alloc('int');  
-  var outReadBuffer = new Buffer(512);
+  var outReadBuffer = Buffer.alloc(512);
   outReadBuffer.type = ref.types.char;
   viStatus = viRead()(sessionDevice, outReadBuffer, outReadBuffer.length, outNumberReadBuffLen);
   var readBuffLen = outNumberReadBuffLen.deref();
